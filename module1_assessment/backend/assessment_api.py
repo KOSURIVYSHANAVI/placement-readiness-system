@@ -8,8 +8,14 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-client = MongoClient('mongodb://localhost:27017/')
+# Connection pooling for better performance
+client = MongoClient('mongodb://localhost:27017/', maxPoolSize=50, minPoolSize=10)
 db = client['placement_readiness_module1']
+
+# Create indexes for faster queries
+db.students.create_index('email', unique=True)
+db.questions.create_index('category')
+db.test_results.create_index([('student_id', 1), ('submitted_at', -1)])
 
 @app.route('/api/student/register', methods=['POST'])
 def register():
@@ -38,7 +44,11 @@ def login():
 
 @app.route('/api/questions/<category>', methods=['GET'])
 def get_questions(category):
-    questions = list(db.questions.find({'category': category}))
+    # OPTIMIZED: Project only needed fields, exclude password-like sensitive data
+    questions = list(db.questions.find(
+        {'category': category},
+        {'_id': 1, 'question_text': 1, 'option_a': 1, 'option_b': 1, 'option_c': 1, 'option_d': 1}
+    ))
     for q in questions:
         q['id'] = str(q['_id'])
         del q['_id']
@@ -54,8 +64,12 @@ def submit_test():
     score = 0
     total = len(answers)
     
+    # OPTIMIZED: Batch fetch all questions at once instead of one by one
+    question_ids = [ObjectId(ans['question_id']) for ans in answers]
+    questions = {str(q['_id']): q for q in db.questions.find({'_id': {'$in': question_ids}})}
+    
     for ans in answers:
-        question = db.questions.find_one({'_id': ObjectId(ans['question_id'])})
+        question = questions.get(ans['question_id'])
         if question and question['correct_answer'] == ans['selected_answer']:
             score += 1
     

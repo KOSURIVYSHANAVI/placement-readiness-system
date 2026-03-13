@@ -21,6 +21,7 @@ function AdminAuth() {
       if (res.ok) {
         localStorage.setItem('admin_id', data.admin_id);
         localStorage.setItem('admin_name', data.name || formData.name);
+        localStorage.setItem('role', 'admin');
         alert(data.message);
         navigate('/admin-management');
       } else {
@@ -77,6 +78,10 @@ function AdminAuth() {
             {isLogin ? 'Register' : 'Login'}
           </span>
         </p>
+        
+        <button onClick={() => navigate('/')} style={{ width: '100%', marginTop: '15px', padding: '10px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+          Back to Home
+        </button>
       </div>
     </div>
   );

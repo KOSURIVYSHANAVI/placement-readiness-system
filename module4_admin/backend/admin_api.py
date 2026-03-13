@@ -7,10 +7,13 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-# MongoDB Connection
-client = MongoClient('mongodb://localhost:27017/')
+# MongoDB Connection with pooling
+client = MongoClient('mongodb://localhost:27017/', maxPoolSize=50, minPoolSize=10)
 db = client['placement_readiness_module4']
 admins_collection = db['admins']
+
+# Create indexes
+admins_collection.create_index('email', unique=True)
 
 # Access other modules' databases
 module1_db = client['placement_readiness_module1']
@@ -41,35 +44,52 @@ def register_admin():
 @app.route('/api/admin/login', methods=['POST'])
 def login_admin():
     data = request.json
-    admin = admins_collection.find_one({'email': data['email']})
     
-    if admin and check_password_hash(admin['password'], data['password']):
+    # HARDCODED ADMIN CREDENTIALS - Only this email/password works
+    ADMIN_EMAIL = 'admin@placement.com'
+    ADMIN_PASSWORD = 'admin123'
+    
+    if data['email'] == ADMIN_EMAIL and data['password'] == ADMIN_PASSWORD:
         return jsonify({
             'message': 'Login successful',
-            'admin_id': str(admin['_id']),
-            'name': admin['name']
+            'admin_id': 'admin_001',
+            'name': 'Admin'
         }), 200
-    return jsonify({'message': 'Invalid credentials'}), 401
+    
+    return jsonify({'error': 'Invalid credentials'}), 401
 
 # Monitor Student Readiness
 @app.route('/api/admin/students', methods=['GET'])
 def get_all_students():
-    students = list(students_collection.find())
+    # OPTIMIZED: Use aggregation with lookup
+    pipeline = [
+        {'$lookup': {
+            'from': 'test_results',
+            'localField': '_id',
+            'foreignField': 'student_id',
+            'as': 'results',
+            'pipeline': [{'$project': {'percentage': 1}}]
+        }},
+        {'$project': {
+            'name': 1,
+            'email': 1,
+            'created_at': 1,
+            'tests_taken': {'$size': '$results'},
+            'average_score': {'$avg': '$results.percentage'}
+        }}
+    ]
     
-    student_data = []
-    for student in students:
-        results = list(test_results_collection.find({'student_id': str(student['_id'])}))
-        avg_score = sum([r['percentage'] for r in results]) / len(results) if results else 0
-        
-        student_data.append({
-            'id': str(student['_id']),
-            'name': student['name'],
-            'email': student['email'],
-            'tests_taken': len(results),
-            'average_score': round(avg_score, 2),
-            'readiness_status': 'Ready' if avg_score >= 70 else 'Needs Improvement',
-            'registered_at': student['created_at'].strftime('%Y-%m-%d')
-        })
+    students = list(students_collection.aggregate(pipeline))
+    
+    student_data = [{
+        'id': str(s['_id']),
+        'name': s['name'],
+        'email': s['email'],
+        'tests_taken': s.get('tests_taken', 0),
+        'average_score': round(s.get('average_score', 0), 2),
+        'readiness_status': 'Ready' if s.get('average_score', 0) >= 70 else 'Needs Improvement',
+        'registered_at': s['created_at'].strftime('%Y-%m-%d')
+    } for s in students]
     
     return jsonify({'students': student_data, 'total': len(student_data)})
 
@@ -146,6 +166,18 @@ def add_roadmap():
     roadmaps_collection.insert_one(roadmap)
     return jsonify({'message': 'Roadmap added successfully'}), 201
 
+@app.route('/api/admin/roadmaps', methods=['GET'])
+def get_all_roadmaps():
+    roadmaps = list(roadmaps_collection.find())
+    return jsonify([{
+        'id': str(r['_id']),
+        'category': r['category'],
+        'title': r['title'],
+        'description': r['description'],
+        'resources': r['resources'],
+        'duration': r['duration']
+    } for r in roadmaps])
+
 # Manage Company Eligibility
 @app.route('/api/admin/companies', methods=['POST'])
 def add_company():
@@ -159,6 +191,42 @@ def add_company():
     }
     company_eligibility_collection.insert_one(company)
     return jsonify({'message': 'Company added successfully'}), 201
+
+# Add New Subject/Category
+@app.route('/api/admin/subjects', methods=['POST'])
+def add_subject():
+    data = request.json
+    subject = {
+        'key': data['key'],
+        'name': data['name'],
+        'icon': data.get('icon', '📚'),
+        'created_at': datetime.utcnow()
+    }
+    db['subjects'].insert_one(subject)
+    return jsonify({'message': 'Subject added successfully', 'subject': subject}), 201
+
+# Get All Subjects
+@app.route('/api/admin/subjects', methods=['GET'])
+def get_all_subjects():
+    subjects = list(db['subjects'].find())
+    return jsonify([{
+        'id': str(s['_id']),
+        'key': s['key'],
+        'name': s['name'],
+        'icon': s.get('icon', '📚')
+    } for s in subjects])
+
+# Get Question Count by Category
+@app.route('/api/admin/questions/count', methods=['GET'])
+def get_question_counts():
+    pipeline = [
+        {'$group': {'_id': '$category', 'count': {'$sum': 1}}}
+    ]
+    counts = list(questions_collection.aggregate(pipeline))
+    return jsonify([{
+        'category': c['_id'],
+        'count': c['count']
+    } for c in counts])
 
 # Generate Reports
 @app.route('/api/admin/reports/placement-readiness', methods=['GET'])

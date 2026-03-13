@@ -6,11 +6,14 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 CORS(app)
 
-# MongoDB Connection - Read from Module 1
-client = MongoClient('mongodb://localhost:27017/')
+# MongoDB Connection with pooling
+client = MongoClient('mongodb://localhost:27017/', maxPoolSize=50, minPoolSize=10)
 module1_db = client['placement_readiness_module1']
 test_results_collection = module1_db['test_results']
 students_collection = module1_db['students']
+
+# Create indexes
+test_results_collection.create_index([('student_id', 1), ('completed_at', -1)])
 
 # Get Student Progress Over Time
 @app.route('/api/analytics/progress/<student_id>', methods=['GET'])
@@ -75,9 +78,21 @@ def get_chart_data(student_id):
 # Get Overall Analytics Dashboard
 @app.route('/api/analytics/dashboard/<student_id>', methods=['GET'])
 def get_analytics_dashboard(student_id):
-    results = list(test_results_collection.find({'student_id': student_id}))
+    # OPTIMIZED: Use aggregation pipeline
+    pipeline = [
+        {'$match': {'student_id': student_id}},
+        {'$group': {
+            '_id': None,
+            'total_tests': {'$sum': 1},
+            'average_score': {'$avg': '$percentage'},
+            'highest_score': {'$max': '$percentage'},
+            'lowest_score': {'$min': '$percentage'},
+            'categories': {'$addToSet': '$category'}
+        }}
+    ]
+    result = list(test_results_collection.aggregate(pipeline))
     
-    if not results:
+    if not result:
         return jsonify({
             'message': 'No data available',
             'total_tests': 0,
@@ -86,15 +101,13 @@ def get_analytics_dashboard(student_id):
             'lowest_score': 0
         })
     
-    scores = [r['percentage'] for r in results]
-    
+    data = result[0]
     return jsonify({
-        'total_tests': len(results),
-        'average_score': sum(scores) / len(scores),
-        'highest_score': max(scores),
-        'lowest_score': min(scores),
-        'categories_attempted': len(set([r['category'] for r in results])),
-        'improvement_trend': 'Improving' if len(results) > 1 and scores[-1] > scores[0] else 'Stable'
+        'total_tests': data['total_tests'],
+        'average_score': round(data['average_score'], 2),
+        'highest_score': round(data['highest_score'], 2),
+        'lowest_score': round(data['lowest_score'], 2),
+        'categories_attempted': len(data['categories'])
     })
 
 # Get Readiness Improvement Timeline

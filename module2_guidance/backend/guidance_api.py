@@ -6,15 +6,20 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-# MongoDB Connection
-client = MongoClient('mongodb://localhost:27017/')
+# MongoDB Connection with pooling
+client = MongoClient('mongodb://localhost:27017/', maxPoolSize=50, minPoolSize=10)
 db = client['placement_readiness_module2']
 roadmaps_collection = db['roadmaps']
 job_roles_collection = db['job_roles']
 company_eligibility_collection = db['company_eligibility']
 
+# Create indexes
+roadmaps_collection.create_index('category')
+job_roles_collection.create_index('required_skills')
+company_eligibility_collection.create_index('min_score')
+
 # Module 1 DB for reading test results
-module1_db = MongoClient('mongodb://localhost:27017/')['placement_readiness_module1']
+module1_db = client['placement_readiness_module1']
 test_results_collection = module1_db['test_results']
 
 # Get Personalized Roadmap based on skill gaps
@@ -74,24 +79,30 @@ def get_suitable_job_roles(student_id):
 # Company Eligibility Simulation
 @app.route('/api/guidance/company-eligibility/<student_id>', methods=['GET'])
 def check_company_eligibility(student_id):
-    results = list(test_results_collection.find({'student_id': student_id}))
+    # OPTIMIZED: Use aggregation to calculate average
+    pipeline = [
+        {'$match': {'student_id': student_id}},
+        {'$group': {'_id': None, 'avg_score': {'$avg': '$percentage'}}}
+    ]
+    result = list(test_results_collection.aggregate(pipeline))
     
-    if not results:
+    if not result:
         return jsonify({'message': 'No test results found', 'eligible_companies': []})
     
-    avg_score = sum([r['percentage'] for r in results]) / len(results)
+    avg_score = result[0]['avg_score']
     
-    companies = list(company_eligibility_collection.find())
-    eligible_companies = []
+    # OPTIMIZED: Query only eligible companies
+    eligible_companies = list(company_eligibility_collection.find(
+        {'min_score': {'$lte': avg_score}},
+        {'name': 1, 'min_score': 1, 'roles': 1, 'package': 1}
+    ))
     
-    for company in companies:
-        if avg_score >= company['min_score']:
-            eligible_companies.append({
-                'name': company['name'],
-                'min_score': company['min_score'],
-                'roles': company.get('roles', []),
-                'package': company.get('package', 'Not specified')
-            })
+    eligible_companies = [{
+        'name': c['name'],
+        'min_score': c['min_score'],
+        'roles': c.get('roles', []),
+        'package': c.get('package', 'Not specified')
+    } for c in eligible_companies]
     
     return jsonify({
         'average_score': avg_score,

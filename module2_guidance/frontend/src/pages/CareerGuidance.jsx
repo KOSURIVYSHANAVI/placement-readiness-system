@@ -18,7 +18,6 @@ function CareerGuidance() {
       return;
     }
 
-    // Fetch personalized roadmap
     fetch(`http://localhost:5002/api/guidance/roadmap/${studentId}`)
       .then(res => res.json())
       .then(data => {
@@ -26,7 +25,6 @@ function CareerGuidance() {
         setRoadmaps(data.roadmaps || []);
       });
 
-    // Fetch suitable job roles
     fetch(`http://localhost:5002/api/guidance/job-roles/${studentId}`)
       .then(res => res.json())
       .then(data => {
@@ -34,7 +32,6 @@ function CareerGuidance() {
         setJobRoles(data.job_roles || []);
       });
 
-    // Fetch company eligibility
     fetch(`http://localhost:5002/api/guidance/company-eligibility/${studentId}`)
       .then(res => res.json())
       .then(data => {
@@ -48,7 +45,6 @@ function CareerGuidance() {
       <h1 style={{ color: '#764ba2', textAlign: 'center' }}>Career Guidance & Recommendations</h1>
       <p style={{ textAlign: 'center', color: '#666', marginBottom: '40px' }}>Module 2 - Personalized Career Path</p>
 
-      {/* Improvement Roadmap */}
       <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', marginBottom: '30px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
         <h2 style={{ color: '#764ba2' }}>📚 Your Improvement Roadmap</h2>
         {weakAreas.length > 0 && (
@@ -76,7 +72,6 @@ function CareerGuidance() {
         )}
       </div>
 
-      {/* Suitable Job Roles */}
       <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', marginBottom: '30px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
         <h2 style={{ color: '#764ba2' }}>💼 Suitable Job Roles for You</h2>
         {strongSkills.length > 0 && (
@@ -98,7 +93,6 @@ function CareerGuidance() {
         )}
       </div>
 
-      {/* Company Eligibility */}
       <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
         <h2 style={{ color: '#764ba2' }}>🏢 Company Eligibility Simulation</h2>
         <p style={{ color: '#666', marginBottom: '20px' }}>Your Average Score: <strong style={{ color: avgScore >= 70 ? 'green' : avgScore >= 50 ? 'orange' : 'red', fontSize: '20px' }}>{avgScore.toFixed(2)}%</strong></p>
